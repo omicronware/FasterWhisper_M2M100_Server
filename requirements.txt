@@ -1,0 +1,8 @@
+faster_whisper==1.1.1
+Flask==3.1.0
+gevent==24.11.1
+optimum[onnxruntime-gpu]==1.24.0
+torch==2.6.0
+transformers==4.48.3
+onnx==1.17.0
+sentencepiece==0.2.0
