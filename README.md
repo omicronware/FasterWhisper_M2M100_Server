@@ -92,8 +92,8 @@ Flask + gevent を利用した Web サーバーとして動作し、HTTP/HTTPS �
    ├── encoder_model.onnx
    ├── decoder_model.onnx
    ├── decoder_with_past_model.onnx
-   ├── *.onnx_data
-   ├── config.json, tokenizer_config.json, vocab.json, ...
+   ├── sentencepiece.bpe.model
+   ├── config.json, tokenizer_config.json, vocab.json, 他...
    ```
 
 4. **Whisper モデル (faster-whisper) の準備**  
@@ -209,7 +209,7 @@ Flask + gevent を利用した Web サーバーとして動作し、HTTP/HTTPS �
 
 ### Dockerイメージのビルド
 - とりあえず用意しました。
-- 別途 Dockerfileを環境に合わせて修正してください。上記の各モデルファイル(M2M100_418M, faster-whisper/large-v3)を適切なディレクトリにコピーしてからビルドしてください。
+- 別途 Dockerfileをご自分の環境に合わせて修正してください。上記の各モデルファイル(M2M100_418M, faster-whisper/large-v3)を適切なディレクトリにコピーしてからビルドしてください。
    ```bash
    docker build -t fasterwhisper-m2m100-server .
    docker run --gpus all -p 9000:9000 -p 9443:9443 fasterwhisper-m2m100-server
