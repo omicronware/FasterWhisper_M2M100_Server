@@ -59,58 +59,67 @@ Flask + gevent を利用した Web サーバーとして動作し、HTTP/HTTPS �
 
 3. **M2M100 (ONNX) モデルの配置**  
    `onnx_m2m100.py` の冒頭にある `MODEL_DIR = "models/onnx-m2m100"` に合わせて、事前にエクスポート済みの ONNX M2M100 モデルファイルを `models/onnx-m2m100/` ディレクトリへ配置してください。オリジナルのモデルは、"m2m100_418M"になります。以下にオリジナルからONNXモデルに変換する方法を掲載します。適当な仮想環境上で必要なライブラリをインストールします。
-```bash
-pip install transformers optimum[onnxruntime] onnx onnxruntime-gpu SentencePiece
-```
+   ```bash
+   pip install transformers optimum[onnxruntime] onnx onnxruntime-gpu SentencePiece
+   ```
   - 続いて、以下のスクリプトを実行してください。途中ワーニングがでるかもしれません。ダウンロードには十分なRAMが必要です。念のためPowerShellなどで下記の環境変数を設定してください。（例）
-```bash
-set TEMP=C:\Users\<UserName>\AppData\Local\Temp
-set TMP=C:\Users\<UserName>\AppData\Local\Temp
-```
-```bash
-from transformers import M2M100ForConditionalGeneration, M2M100Tokenizer
-from optimum.onnxruntime import ORTModelForSeq2SeqLM
-from pathlib import Path
+   ```bash
+   set TEMP=C:\Users\<UserName>\AppData\Local\Temp
+   set TMP=C:\Users\<UserName>\AppData\Local\Temp
+   ```
+  
+   ```bash
+   from transformers import M2M100ForConditionalGeneration, M2M100Tokenizer
+   from optimum.onnxruntime import ORTModelForSeq2SeqLM
+   from pathlib import Path
 
-# モデルIDと保存ディレクトリ
-model_id = "facebook/m2m100_418M"
-save_dir = Path("models/onnx-m2m100")
-save_dir.mkdir(parents=True, exist_ok=True)
+   # モデルIDと保存ディレクトリ
+   model_id = "facebook/m2m100_418M"
+   save_dir = Path("models/onnx-m2m100")
+   save_dir.mkdir(parents=True, exist_ok=True)
 
-# トークナイザと元モデルを読み込み
-tokenizer = M2M100Tokenizer.from_pretrained(model_id)
+   # トークナイザと元モデルを読み込み
+   tokenizer = M2M100Tokenizer.from_pretrained(model_id)
 
-# ONNXモデルに変換・保存
-onnx_model = ORTModelForSeq2SeqLM.from_pretrained(model_id, export=True)
-onnx_model.save_pretrained(save_dir)
-tokenizer.save_pretrained(save_dir)
-```
+   # ONNXモデルに変換・保存
+   onnx_model = ORTModelForSeq2SeqLM.from_pretrained(model_id, export=True)
+   onnx_model.save_pretrained(save_dir)
+   tokenizer.save_pretrained(save_dir)
+   ```
 
 4. **Whisper モデル (faster-whisper) の準備**  
    - `fasterwhisper_m2m100_server.py` にある `MODEL_NAME = "large-v3"` を必要に応じて変更。  
    - 事前にモデルファイルをダウンロードして `models/` ディレクトリに配置するか、起動時に自動ダウンロードしても構いません。以下手動でダウンロードする方法を掲載します。適当な仮想環境上で、必要なライブラリをインストールします。
-```bash
-pip install faster-whisper
-```
+   ```bash
+   pip install faster-whisper
+   ```
    - 続いて、以下のスクリプトを実行してください。数分後./models/models--Systran--faster-whisper-large-v3/にダウンロードされます。
-```bash
-from faster_whisper import WhisperModel
-import os
+   ```bash
+   from faster_whisper import WhisperModel
+   import os
 
-# モデル名と保存先パス
-model_name = "large-v3"
-save_dir = "./models"
+   # モデル名と保存先パス
+   model_name = "large-v3"
+   save_dir = "./models"
 
-# モデル保存先を設定
-os.makedirs(save_dir, exist_ok=True)
+   # モデル保存先を設定
+   os.makedirs(save_dir, exist_ok=True)
 
-print(f"Downloading '{model_name}' model into '{save_dir}'...")
+   print(f"Downloading '{model_name}' model into '{save_dir}'...")
 
-# モデルを初回だけダウンロード（2回目以降はローカルキャッシュから）
-model = WhisperModel(model_name, download_root=save_dir)
+   # モデルを初回だけダウンロード（2回目以降はローカルキャッシュから）
+   model = WhisperModel(model_name, download_root=save_dir)
 
-print("ダウンロード完了！")
-```
+   print("ダウンロード完了！")
+   ```
+
+  - なお、このサーバーはいくつかの環境変数を設定することで、M2M100のモデルやfaster-whisperのモデルを変更することができます。詳しくはソースコードを見てください。
+  - モデルを高精度のM2M100_1.2Bに変更したい場合は、上記スクリプトを適切に変更（418M → 1.2B, models/onnx-m2m100 → models/onnx-m2m100-1.2Bに変更）
+  - PowerShellなどで環境変数を設定する。
+   ```bash
+   $env:M2M_MODEL_SIZE="1.2B"  # PowerShell の場合
+   M2M_MODEL_SIZE=1.2B python fasterwhisper_m2m100_server.py (Linux/MacOS)
+   ```
 
 5. **サーバー起動**
    ```bash
@@ -123,19 +132,19 @@ print("ダウンロード完了！")
 ## 使い方
 
 - **ヘルスチェック**  
-  ```bash
-  curl http://localhost:9000/transcribe
-  ```
-  → `{"status":"ok"}` が返れば正常。
+   ```bash
+   curl http://localhost:9000/transcribe
+   ```
+   → `{"status":"ok"}` が返れば正常。
 
 - **音声アップロード (POST)**  
-  ```bash
-  curl -X POST http://localhost:9000/transcribe \
-       -F "audio_file=@audio_sample.mp3" \
-       -F "from_language=ja" \
-       -F "to_language=en"
-  ```
-  → JSON 形式で文字起こし (`transcript_text`) と翻訳 (`translated_text`) を返す。
+   ```bash
+   curl -X POST http://localhost:9000/transcribe \
+        -F "audio_file=@audio_sample.mp3" \
+        -F "from_language=ja" \
+        -F "to_language=en"
+   ```
+   → JSON 形式で文字起こし (`transcript_text`) と翻訳 (`translated_text`) を返す。
 
 ---
 
