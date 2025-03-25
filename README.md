@@ -67,24 +67,33 @@ Flask + gevent を利用した Web サーバーとして動作し、HTTP/HTTPS �
    set TEMP=C:\Users\<UserName>\AppData\Local\Temp
    set TMP=C:\Users\<UserName>\AppData\Local\Temp
    ```
-  
+   
    ```bash
    from transformers import M2M100ForConditionalGeneration, M2M100Tokenizer
    from optimum.onnxruntime import ORTModelForSeq2SeqLM
    from pathlib import Path
-
+    
    # モデルIDと保存ディレクトリ
    model_id = "facebook/m2m100_418M"
    save_dir = Path("models/onnx-m2m100")
    save_dir.mkdir(parents=True, exist_ok=True)
-
+    
    # トークナイザと元モデルを読み込み
    tokenizer = M2M100Tokenizer.from_pretrained(model_id)
-
+   
    # ONNXモデルに変換・保存
    onnx_model = ORTModelForSeq2SeqLM.from_pretrained(model_id, export=True)
    onnx_model.save_pretrained(save_dir)
    tokenizer.save_pretrained(save_dir)
+   ```
+  - 補足：変換後にこのような構成があれば成功
+   ```bash
+   onnx-m2m100/
+   ├── encoder_model.onnx
+   ├── decoder_model.onnx
+   ├── decoder_with_past_model.onnx
+   ├── *.onnx_data
+   ├── config.json, tokenizer_config.json, vocab.json, ...
    ```
 
 4. **Whisper モデル (faster-whisper) の準備**  
@@ -97,19 +106,19 @@ Flask + gevent を利用した Web サーバーとして動作し、HTTP/HTTPS �
    ```bash
    from faster_whisper import WhisperModel
    import os
-
+   
    # モデル名と保存先パス
    model_name = "large-v3"
    save_dir = "./models"
-
+   
    # モデル保存先を設定
    os.makedirs(save_dir, exist_ok=True)
-
+   
    print(f"Downloading '{model_name}' model into '{save_dir}'...")
-
+   
    # モデルを初回だけダウンロード（2回目以降はローカルキャッシュから）
    model = WhisperModel(model_name, download_root=save_dir)
-
+   
    print("ダウンロード完了！")
    ```
 
@@ -201,4 +210,8 @@ Flask + gevent を利用した Web サーバーとして動作し、HTTP/HTTPS �
 ### Dockerイメージのビルド
 - とりあえず用意しました。
 - 別途 Dockerfileを環境に合わせて修正してください。上記の各モデルファイル(M2M100_418M, faster-whisper/large-v3)を適切なディレクトリにコピーしてからビルドしてください。
+   ```bash
+   docker build -t fasterwhisper-m2m100-server .
+   docker run --gpus all -p 9000:9000 -p 9443:9443 fasterwhisper-m2m100-server
+   ```
 
