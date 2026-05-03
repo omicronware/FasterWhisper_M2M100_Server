@@ -1,99 +1,88 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-#
-# PVT Leaf client-server model.
-#     omicronware(c): https://www.omicronware.com/
-#
-import re,os
-import torch
+
+import sys
+
+import onnxruntime as ort
 from optimum.onnxruntime import ORTModelForSeq2SeqLM
 from transformers import M2M100Tokenizer
 
-# ここで ONNX形式モデルを読み込みます。
-# 事前に "models/onnx_m2m100" ディレクトリを用意し、その中にエクスポートされたモデルを配置してください。
-# 環境変数に応じてモデルを切り替える。
-MODEL_SIZE = os.environ.get("M2M_MODEL_SIZE", "418M")  # "418M" or "1.2B"
-MODEL_DIR = f"models/onnx-m2m100{'-1.2B' if MODEL_SIZE == '1.2B' else ''}"
+from setup_env import load_config, get_m2m100_model_dir, get_m2m100_model_size
 
-try:
-    tokenizer = M2M100Tokenizer.from_pretrained(MODEL_DIR,local_files_only=True)
-    model = ORTModelForSeq2SeqLM.from_pretrained(MODEL_DIR,local_files_only=True)
-except Exception as e:
-    raise RuntimeError(f"ONNXモデルの読み込みに失敗しました: {e}")
+CONFIG = load_config()
+TRANSLATION_CONFIG = CONFIG.get("translation", {})
+
+MODEL_SIZE = get_m2m100_model_size(CONFIG)
+MODEL_DIR = get_m2m100_model_dir(CONFIG)
+REQUESTED_PROVIDER = str(TRANSLATION_CONFIG.get("M2M_ORT_PROVIDER", "CPUExecutionProvider"))
+MAX_INPUT_LENGTH = int(TRANSLATION_CONFIG.get("MAX_INPUT_LENGTH", 512))
+MAX_OUTPUT_LENGTH = int(TRANSLATION_CONFIG.get("MAX_OUTPUT_LENGTH", 256))
+NUM_BEAMS = int(TRANSLATION_CONFIG.get("NUM_BEAMS", 2))
+
+print(f"Loading ONNX M2M100 from: {MODEL_DIR}")
+
+if not MODEL_DIR.exists():
+    raise RuntimeError(
+        f"ONNX model directory does not exist: {MODEL_DIR}. "
+        "Run 'python setup_env.py' first."
+    )
+
+available_providers = ort.get_available_providers()
+print(f"ONNX Runtime available providers: {available_providers}")
+
+provider = REQUESTED_PROVIDER if REQUESTED_PROVIDER in available_providers else "CPUExecutionProvider"
+print(f"Using ONNX Runtime provider: {provider}")
+
+tokenizer = M2M100Tokenizer.from_pretrained(str(MODEL_DIR), local_files_only=True)
+model = ORTModelForSeq2SeqLM.from_pretrained(
+    str(MODEL_DIR),
+    local_files_only=True,
+    provider=provider,
+    use_merged=False,
+    use_io_binding=False,
+)
 
 
-
-# 2) 翻訳メイン関数: languages_dict は使わず ISOコード変換テーブルで処理
 def m2m100(from_lang, to_lang, transcribed_text):
-    """
-    from_lang, to_lang : ISO 639-1 コード (例: "ja", "en", "zh-cn" 等)
-    transcribed_text   : 翻訳対象テキスト
-    """
-
-    # ISOコードから M2M100 が期待する言語コードへの変換テーブル
-    # （簡体・繁体の区別は厳密には "zh" が両方扱う）
     iso_map = {
-        'en': 'en',
-        'ja': 'ja',
-        'zh-cn': 'zh',
-        'zh': 'zh',
-        'zh-tw': 'zh',
-        'ko': 'ko',
-        'fr': 'fr',
-        'de': 'de',
-        'es': 'es',
-        'it': 'it',
-        'pt': 'pt',
-        'nl': 'nl',
-        'ru': 'ru',
-        'ar': 'ar',
-        'hi': 'hi',
-        #'te': 'te', #M2M100_xxx, Not supported.
-        'ml': 'ml',
-        'bn': 'bn',
-        'ur': 'ur',
-        'th': 'th',
-        'mn': 'mn',
-        'id': 'id',
-        'sv': 'sv',
-        'vi': 'vi',
-        'no': 'no',
-        'fi': 'fi',
-        'he': 'he',
-        'uk': 'uk'
-        #必要に応じて追加
+        "en": "en", "ja": "ja", "zh-cn": "zh", "zh": "zh", "zh-tw": "zh",
+        "ko": "ko", "fr": "fr", "de": "de", "es": "es", "it": "it",
+        "pt": "pt", "nl": "nl", "ru": "ru", "ar": "ar", "hi": "hi",
+        "ml": "ml", "bn": "bn", "ur": "ur", "th": "th", "mn": "mn",
+        "id": "id", "sv": "sv", "vi": "vi", "no": "no", "fi": "fi",
+        "he": "he", "uk": "uk",
     }
 
-    # 見つからなければデフォルトで "en" を使う
-    src_iso = iso_map.get(from_lang.lower(), 'en')
-    tgt_iso = iso_map.get(to_lang.lower(), 'en')
+    if not from_lang or not to_lang:
+        return transcribed_text or ""
+    if not transcribed_text or not transcribed_text.strip():
+        return ""
 
-    # ソース言語を tokenizer にセット
+    src_iso = iso_map.get(from_lang.lower(), "en")
+    tgt_iso = iso_map.get(to_lang.lower(), "en")
+
+    if src_iso == tgt_iso:
+        return transcribed_text.strip()
+
     tokenizer.src_lang = src_iso
+    encoded = tokenizer(
+        transcribed_text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=MAX_INPUT_LENGTH,
+    )
 
-    # テキストをトークナイズ
-    encoded = tokenizer(transcribed_text, return_tensors="pt")
-
-    # 生成: forced_bos_token_id でターゲット言語を指定
     generated_tokens = model.generate(
         **encoded,
         forced_bos_token_id=tokenizer.get_lang_id(tgt_iso),
-        max_length=512,
-        num_beams=5,
-        no_repeat_ngram_size=2
+        max_length=MAX_OUTPUT_LENGTH,
+        num_beams=NUM_BEAMS,
     )
 
-    # 結果をデコード
-    result = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
+    return tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0].strip()
 
-    return result.strip()
 
-##############################################################################
-# 3) テスト実行例
-##############################################################################
 if __name__ == "__main__":
-    text_jp = "昨日は飲みすぎてしまい、朝起きるのが大変でした。"
-    print("翻訳(JA→EN):", m2m100("ja", "en", text_jp))
-
-    text_en = "I drank too much yesterday, so it was hard to wake up in the morning."
-    print("翻訳(EN→JA):", m2m100("en", "ja", text_en))
+    print(f"M2M100 runtime is ready. model_size={MODEL_SIZE}, provider={provider}")
+    if len(sys.argv) >= 4:
+        print(m2m100(sys.argv[1], sys.argv[2], " ".join(sys.argv[3:])))

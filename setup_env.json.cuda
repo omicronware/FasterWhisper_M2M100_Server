@@ -1,0 +1,27 @@
+{
+  "setup": {
+    "models_dir": "models",
+    "hf_cache_dir": "hf_cache",
+    "download_faster_whisper": true,
+    "download_m2m100": true
+  },
+  "transcribe": {
+    "FW_MODEL_NAME": "large-v3-turbo",
+    "FW_COMPUTE_TYPE": "float16",
+    "FW_DEVICE": "cuda"
+  },
+  "translation": {
+    "M2M_MODEL_SIZE": "418M",
+    "M2M_ORT_PROVIDER": "CPUExecutionProvider",
+    "MAX_INPUT_LENGTH": 512,
+    "MAX_OUTPUT_LENGTH": 256,
+    "NUM_BEAMS": 2
+  },
+  "server": {
+    "HOST": "0.0.0.0",
+    "HTTP_PORT": 9000,
+    "HTTPS_PORT": 9443,
+    "CERT_FILE": "server.crt",
+    "KEY_FILE": "server.key"
+  }
+}
