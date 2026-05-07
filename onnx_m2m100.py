@@ -44,15 +44,57 @@ model = ORTModelForSeq2SeqLM.from_pretrained(
 
 
 def m2m100(from_lang, to_lang, transcribed_text):
-    iso_map = {
-        "en": "en", "ja": "ja", "zh-cn": "zh", "zh": "zh", "zh-tw": "zh",
-        "ko": "ko", "fr": "fr", "de": "de", "es": "es", "it": "it",
-        "pt": "pt", "nl": "nl", "ru": "ru", "ar": "ar", "hi": "hi",
-        "ml": "ml", "bn": "bn", "ur": "ur", "th": "th", "mn": "mn",
-        "id": "id", "sv": "sv", "vi": "vi", "no": "no", "fi": "fi",
-        "he": "he", "uk": "uk",
-    }
 
+    iso_map = {
+    # Core / East Asia
+    "en": "en",
+    "zh-cn": "zh",
+    "zh-tw": "zh",
+    "zh": "zh",
+    "ko": "ko",
+    "ja": "ja",
+
+    # Major European languages
+    "de": "de",
+    "fr": "fr",
+    "es": "es",
+    "pt": "pt",
+    "nl": "nl",
+    "it": "it",
+    "tr": "tr",
+    "pl": "pl",
+    "sv": "sv",
+    "no": "no",
+    "fi": "fi",
+    "da": "da",
+    "cs": "cs",
+    "ro": "ro",
+    "hu": "hu",
+    "el": "el",
+
+    # Southeast Asia
+    "th": "th",
+    "vi": "vi",
+    "id": "id",
+    "ms": "ms",
+    "tl": "tl",
+
+    # South Asia
+    "hi": "hi",
+    "ta": "ta",
+    "te": "te",
+    "ml": "ml",
+    "bn": "bn",
+    "ur": "ur",
+
+    # Middle East / Cyrillic / Hebrew
+    "ar": "ar",
+    "fa": "fa",
+    "ru": "ru",
+    "uk": "uk",
+    "he": "he",
+    }
+    
     if not from_lang or not to_lang:
         return transcribed_text or ""
     if not transcribed_text or not transcribed_text.strip():
