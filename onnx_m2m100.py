@@ -3,6 +3,23 @@
 
 import sys
 
+try:
+    from gevent.lock import Semaphore
+except Exception:
+    from threading import Lock
+
+    class Semaphore:
+        def __init__(self, value=1):
+            self._lock = Lock()
+
+        def __enter__(self):
+            self._lock.acquire()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self._lock.release()
+            return False
+
 import onnxruntime as ort
 from optimum.onnxruntime import ORTModelForSeq2SeqLM
 from transformers import M2M100Tokenizer
@@ -41,6 +58,9 @@ model = ORTModelForSeq2SeqLM.from_pretrained(
     use_merged=False,
     use_io_binding=False,
 )
+
+# Queue translation requests because tokenizer.src_lang is mutable process-global state.
+M2M100_QUEUE = Semaphore(1)
 
 
 def m2m100(from_lang, to_lang, transcribed_text):
@@ -106,22 +126,23 @@ def m2m100(from_lang, to_lang, transcribed_text):
     if src_iso == tgt_iso:
         return transcribed_text.strip()
 
-    tokenizer.src_lang = src_iso
-    encoded = tokenizer(
-        transcribed_text,
-        return_tensors="pt",
-        truncation=True,
-        max_length=MAX_INPUT_LENGTH,
-    )
+    with M2M100_QUEUE:
+        tokenizer.src_lang = src_iso
+        encoded = tokenizer(
+            transcribed_text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=MAX_INPUT_LENGTH,
+        )
 
-    generated_tokens = model.generate(
-        **encoded,
-        forced_bos_token_id=tokenizer.get_lang_id(tgt_iso),
-        max_length=MAX_OUTPUT_LENGTH,
-        num_beams=NUM_BEAMS,
-    )
+        generated_tokens = model.generate(
+            **encoded,
+            forced_bos_token_id=tokenizer.get_lang_id(tgt_iso),
+            max_length=MAX_OUTPUT_LENGTH,
+            num_beams=NUM_BEAMS,
+        )
 
-    return tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0].strip()
+        return tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0].strip()
 
 
 if __name__ == "__main__":

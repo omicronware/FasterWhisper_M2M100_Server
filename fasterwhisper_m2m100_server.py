@@ -4,12 +4,14 @@
 import os
 import sys
 import tempfile
+import time
 import traceback
 
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel, BatchedInferencePipeline
 from werkzeug.exceptions import HTTPException
 from gevent.pywsgi import WSGIServer
+from gevent.lock import Semaphore
 import gevent
 
 from setup_env import load_config, get_models_dir, resolve_project_path
@@ -40,6 +42,12 @@ try:
 except Exception as e:
     print("Error loading model:", e, file=sys.stderr)
     sys.exit(1)
+
+
+# Queue all inference requests in this process.
+# This keeps shared faster-whisper / M2M100 model objects from being used concurrently.
+# Requests wait here instead of returning 429/busy.
+INFERENCE_QUEUE = Semaphore(1)
 
 
 @app.errorhandler(Exception)
@@ -76,14 +84,23 @@ def transcribe():
         return jsonify({"error": "Failed to temporarily save audio_file", "details": str(e)}), 500
 
     try:
-        segments, info = batched_model.transcribe(tmp_filename, language=from_language)
-        full_text = "".join(segment.text for segment in segments)
-        segments_list = [{"start": s.start, "end": s.end, "text": s.text} for s in segments]
-        detected_language = getattr(info, "language", from_language)
-        translated_text = ""
+        wait_started = time.monotonic()
 
-        if to_language and detected_language and to_language != detected_language:
-            translated_text = onnx_m2m100.m2m100(detected_language, to_language, full_text)
+        # Blocking queue style: do not reject with 429.
+        # The next request starts only after the current ASR + translation finishes.
+        with INFERENCE_QUEUE:
+            wait_seconds = time.monotonic() - wait_started
+            if wait_seconds >= 0.1:
+                print(f"/transcribe waited {wait_seconds:.3f} sec in inference queue.")
+
+            segments, info = batched_model.transcribe(tmp_filename, language=from_language)
+            full_text = "".join(segment.text for segment in segments)
+            segments_list = [{"start": s.start, "end": s.end, "text": s.text} for s in segments]
+            detected_language = getattr(info, "language", from_language)
+            translated_text = ""
+
+            if to_language and detected_language and to_language != detected_language:
+                translated_text = onnx_m2m100.m2m100(detected_language, to_language, full_text)
 
     except Exception as e:
         tb = traceback.format_exc()
