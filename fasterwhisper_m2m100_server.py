@@ -94,6 +94,7 @@ def transcribe():
                 print(f"/transcribe waited {wait_seconds:.3f} sec in inference queue.")
 
             segments, info = batched_model.transcribe(tmp_filename, language=from_language)
+            segments = list(segments)
             full_text = "".join(segment.text for segment in segments)
             segments_list = [{"start": s.start, "end": s.end, "text": s.text} for s in segments]
             detected_language = getattr(info, "language", from_language)
